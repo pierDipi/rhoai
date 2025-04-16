@@ -1,0 +1,169 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kserve-keda-prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: kserve-keda-prometheus
+  labels:
+    app: sample-app
+spec:
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+    spec:
+      containers:
+        - name: sample-app
+          image: docker.io/stefanprodan/podinfo:6.0.0 # Using a specific version
+          ports:
+            - containerPort: 9898
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app-service
+  namespace: kserve-keda-prometheus
+  labels:
+    app: sample-app
+spec:
+  selector:
+    app: sample-app
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sample-app-route
+  namespace: kserve-keda-prometheus
+  labels:
+    app: sample-app
+spec:
+  to:
+    kind: Service
+    name: sample-app-service
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sample-app-monitor
+  namespace: kserve-keda-prometheus
+  labels:
+    app: sample-app-monitor
+spec:
+  selector:
+    matchLabels:
+      app: sample-app
+  namespaceSelector:
+    matchNames:
+      - kserve-keda-prometheus
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-auth
+  namespace: kserve-keda-prometheus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metrics-reader
+  namespace: kserve-keda-prometheus-test
+rules:
+  - apiGroups: [""]
+    resources: [“pods”]
+    verbs: ["get"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metrics-reader
+  namespace: kserve-keda-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-auth
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metrics-reader
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: prometheus-auth
+  namespace: kserve-keda-prometheus
+  annotations:
+    kubernetes.io/service-account.name: prometheus-auth
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-trigger-auth-prometheus
+  namespace: kserve-keda-prometheus
+spec:
+  secretTargetRef:
+    - parameter: bearerToken
+      name: prometheus-auth
+      key: token
+    - parameter: ca
+      name: prometheus-auth
+      key: ca.crt
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sample-app-scaler
+  namespace: kserve-keda-prometheus
+spec:
+  # Reference to the resource we want to scale
+  scaleTargetRef:
+    kind: Deployment
+    name: sample-app
+  # How often KEDA checks the metric (seconds)
+  pollingInterval: 15
+  # Period to wait after last trigger before scaling down (seconds)
+  cooldownPeriod: 90
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: https://thanos-querier.openshift-monitoring.svc.cluster.local:9092
+      # A descriptive name for the metric trigger (used in logs/events)
+      namespace: kserve-keda-prometheus
+      metricName: sample_app_service_http_requests_rate
+      # The PromQL query to execute
+      # Calculates the average request rate per second over the last minute for our service
+      query: sum(rate(http_requests_total{namespace="kserve-keda-prometheus", service="sample-app-service"}[1m]))
+      # The target value PER POD. KEDA calculates: desiredPods = ceil(currentValue / threshold)
+      # If the total rate is 10 req/sec and threshold is '2', KEDA wants ceil(10/2) = 5 pods.
+      # Setting a low threshold for demonstration purposes.
+      threshold: '2' # Target 2 requests/sec per pod
+      authModes: bearer
+    authenticationRef:
+      name: keda-trigger-auth-prometheus

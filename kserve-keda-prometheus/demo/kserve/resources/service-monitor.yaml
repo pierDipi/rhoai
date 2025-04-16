@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: huggingface-fbopt-predictor-monitor
+  namespace: kube-prometheus
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: isvc.huggingface-fbopt-predictor
+  namespaceSelector:
+    matchNames:
+    - kserve-keda-prom
+  endpoints:
+  - port: huggingface-fbopt-predictor
+    interval: 10s
+    path: /metrics
+    scheme: http
