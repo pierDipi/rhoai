@@ -13,7 +13,7 @@
 ### Notes and useful commands
 
 ```shell
-kubectl port-forward svc/huggingface-fbopt-predictor 8080:80
+kubectl port-forward -n kserve-keda-prom svc/huggingface-fbopt-predictor 8080:80
 
 NAMESPACE="default"
 METRIC_NAME="s0-prometheus"
@@ -32,14 +32,14 @@ hey -z 300s -c 10 -m POST -host ${SERVICE_HOSTNAME} -H "Content-Type: applicatio
 # Enable UWM.
 # add `enableUserWorkload: true` to `config.yaml`
 kubectl -n openshift-monitoring edit configmap cluster-monitoring-config
-kubectl apply -f ./docs/samples/keda-prometheus/rhoai/uwm.yaml
+kubectl apply -f ./ocp/uwm.yaml
 
 # Install CMA
-kubectl apply -f ./docs/samples/keda-prometheus/rhoai/cma.yaml
+kubectl apply -f ./ocp/cma.yaml
 # After waiting for operator to be installed
-kubectl apply -f ./docs/samples/keda-prometheus/rhoai/keda-controller.yaml
+kubectl apply -f ./ocp/keda-controller.yaml
 
-kubectl apply -f ./docs/samples/keda-prometheus/rhoai/test.yaml
+kubectl apply -f ./ocp/test.yaml
 
 APP_URL=$(oc get routes -n kserve-keda-prometheus sample-app-route -o jsonpath='{.status.ingress[0].host}')
 hey -z 50s -c 20 -m GET $APP_URL
