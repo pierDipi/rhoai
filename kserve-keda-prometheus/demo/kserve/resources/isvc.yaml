@@ -16,6 +16,8 @@ metadata:
     prometheus.io/path: "/metrics"
     prometheus.io/port: "8080"
     prometheus.io/scheme: "http"
+  labels:
+    kueue.x-k8s.io/queue-name: "local-queue"
 spec:
   predictor:
     model:

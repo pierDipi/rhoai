@@ -1,4 +1,4 @@
-## Upstream KServe
+## Upstream KServe Autoscaling with KEDA (and Kueue)
 
 ### Prerequisites
 
@@ -8,6 +8,9 @@
 
 ```shell
 ./kserve/setup.sh
+
+# or with Kueue enabled
+ENABLE_KUEUE="true" ./kserve/setup.sh
 ```
 
 ### Notes and useful commands
